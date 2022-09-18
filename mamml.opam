@@ -1,0 +1,18 @@
+opam-version: "2.1.2"
+name: "mamml"
+version: "0.0.1-SNAPSHOT"
+maintainer: "Rawley Fowler <rawleyfowler@gmail.com>"
+authors: "Rawley Fowler <rawleyfowler@gmail.com>"
+license: "ISC"
+homepage: "https://github.com/rawleyfowler/mamml"
+dev-repo: "git+https://gitlab.com/rawleyfowler/mamml"
+depends: [
+  "ocaml" {>= "4.13.1"}
+  "dune" {build & >= "3.4.1"}
+  "yojson" {>= "1.6.0"}
+]
+build: [
+  ["dune" "build" -p name]
+]
+         
+         
