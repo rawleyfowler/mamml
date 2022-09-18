@@ -49,20 +49,9 @@
    ...........................
  *)
 
-
 module Data = struct
-  type json = 
-    [
-    | `Null
-    | `Bool of datatype
-    | `Int of int
-    | `Float of float
-    | `String of string
-    | `Object of ( string * json ) list
-    | `List of json list
-    ]
-  and t = 
-    | Json of json
+  type t = 
+    | Json of Yojson.Safe.t
     | Int of int
     | Float of float
     | Text of string
@@ -79,33 +68,32 @@ module Data = struct
     }    
 
   let string_to_typed (d : string) = function
-    | "json" -> Json @@ json_of_string d
-    | "number" -> Number @@ num_of_string d
+    | "json" -> Json (Yojson.Safe.from_string d)
     | "text" -> Text d
     | "uuid" -> Uuid d
-    | "int" -> Int @@ int_of_string d
-    | "float" -> Float @@ float_of_string d
-    | "blob" -> Blob @@ Bytes.bytes_of_string d
-    | "bool" -> Bool @@ bool_of_string d
-    | "date" -> Date @@ int_of_string d
+    | "int" -> Int (int_of_string d)
+    | "float" -> Float (float_of_string d)
+    | "blob" -> Blob (Bytes.of_string d)
+    | "bool" -> Bool (bool_of_string d)
+    | "date" -> Date (int_of_string d)
     | "null" -> Null
     | _ -> failwith "Invalid type, this should have been caught by the parser!"
 
   let string_of_type = function
-    | Json _ -> "json"
-    | Int _ -> "int"
-    | Float _ -> "float"
-    | Text _ -> "text"
-    | Uuid _ -> "uuid"
-    | Blob _ -> "blob"
-    | Bool _ -> "bool"
-    | Date _ -> "date"
+    | Json t -> Yojson.Safe.to_string t
+    | Int t -> string_of_int t
+    | Float t -> string_of_float t
+    | Text t -> t
+    | Uuid t -> t
+    | Blob t -> Bytes.to_string t
+    | Bool t -> string_of_bool t
+    | Date t -> string_of_int t
     | Null -> "null"
 end
 
 (* Since the syntax is similar to SQL, and fairly simple, we can ignore lexing I think, and just parse. *)
 module Parser = struct
-  type request_token =
+  type action_token =
     | Get
     | Put
     | Update
@@ -114,16 +102,18 @@ module Parser = struct
     | As
     | Named
 
-  let request_token_of_string = function
+  let action_token_of_string = function
     | "get" -> Get
     | "put" -> Put
+    | "to" -> To
     | "update" -> Update
     | "delete" -> Delete
     | "as" -> As
     | "named" -> Named
+    | _ -> failwith "Invalid token"
   
   type ast = {
-      request : request_token;
+      action : action_token;
       data : string;
       next : ast option;
     }  
@@ -135,54 +125,70 @@ module Core = struct
   let root_map = Hashtbl.create ~random: true 512
   
   let put n =
-    let () = match n.data with
+    let _ = match n.data with
     | Json t -> "json"
-    | Number t -> "number"
+    | Int t -> "int"
+    | Float t -> "float"
     | Text t -> t
     | Uuid t -> t
     | Blob t -> Bytes.to_string t
     | Bool t -> "true"
     | Date t -> "1992"
     | Null -> "Nothing"
-    in n.id
+    in Null
 
   let get (target : node) : Data.t =
-    Number (Int 123)
+     Int 123
 
-  let delete (target : string) : bool option =    
-    None
+  let delete (target : node) : Data.t =    
+    Null
 
-  let update (target : string) : bool option =
-    None
+  let update (target : node) : Data.t =
+    Null
+
+  let check_exists (target : string) : unit =
+    if false then failwith ""
 
   open Parser
   (* Evaluate the AST and return the node, plus the action to take: (action, node) *)
   let eval_ast (a : ast) =
-    let root_action = a.request in
+    let root_action = a.action in
     let acc = {
         id = string_of_int @@ Oo.id (object end);
         raw = "";
         data = Null;
         created_at = int_of_float @@ Unix.time ();
       }
-    in  
-    let rec aux = function
-      | { req, data, None } ->
-         match req with
-         | To -> acc.raw <- data; acc.data <- (string_to_typed acc.raw)
-         | As -> acc.data <- (string_to_typed acc.raw)
-         | Named -> acc.id <- data
-         | _ -> failwith "Impossible"
-      | { req, data, Some next } -> (* The parser should ensure that singularly evaluated expressions (like DELETE) never hit this match *)
-         match req with
-         | Update -> check_exists data; aux next
-         | As -> acc.data <- (string_to_typed acc.raw); aux next
-         | _ -> acc.raw <- data; aux next
+    in
+    (* The parser should ensure that singularly evaluated expressions (like DELETE) never hit this match *)
+    let handle_no_next a =
+      match a.action with
+      | To -> acc.raw <- a.data; acc.data <- (string_to_typed acc.raw a.data)
+      | As -> acc.data <- (string_to_typed acc.raw a.data)
+      | Named -> acc.id <- a.data
+      | Delete -> acc.id <- a.data
+      | _ -> failwith "Impossible"
+    in
+    let handle_next a =
+      (match a.action with
+      | Update -> check_exists a.data
+      | As -> acc.data <- (string_to_typed acc.raw a.data)
+      | Get -> acc.raw <- a.data
+      | Put -> acc.raw <- a.data
+      | _ -> failwith "Impossible")
+    in
+    let rec aux (a : ast) =
+      match a.next with
+      | None -> handle_no_next a
+      | Some next -> handle_next a; aux next
     in
     let res = aux a; (root_action, acc) in
     match res with
     | (Get, n) -> get n
     | (Put, n) -> put n
+    | (Delete, n) -> delete n
+    | (Update, n) -> update n
+    | _ -> failwith "Invalid root action, can only be: GET, PUT, DELETE, UPDATE"
 end
 
 let () = print_endline "Hello World"
