@@ -93,6 +93,8 @@ end
 
 (* Since the syntax is similar to SQL, and fairly simple, we can ignore lexing I think, and just parse. *)
 module Parser = struct
+  exception Parsing_exception
+  
   type action_token =
     | Get
     | Put
@@ -116,7 +118,28 @@ module Parser = struct
       action : action_token;
       data : string;
       next : ast option;
-    }  
+    }
+
+  let parse_statement (statement : string) : ast =
+    let tokens =
+      statement
+      |> Str.global_replace (Str.regexp ";") ""
+      |> String.lowercase
+      |> String.split_on_char ' '
+    in
+    let rec aux = function
+      | a :: (b :: t) ->
+         Some
+           {
+             action = action_token_of_string a;
+             data = b;
+             next = aux t 
+           }
+      | [] -> None
+      | _ -> raise Parsing_exception
+    in match aux tokens with
+       | Some ast -> ast
+       | None -> raise Parsing_exception
 end
 
 module Core = struct
@@ -124,18 +147,18 @@ module Core = struct
 
   let root_map = Hashtbl.create ~random: true 512
 
-  let get (target : node) : Data.t =
+  let get (target : node) : node =
     Hashtbl.find root_map target.id
   
-  let put (target : node) : Data.t =
+  let put (target : node) : node =
     Hashtbl.add root_map target.id target; get target
 
-  let delete (target : node) : Data.t =    
+  let delete (target : node) : node =    
     let data = get target in
     Hashtbl.remove root_map data.id; data
 
-  let update (target : node) : Data.t =
-    Hashtbl.replace root_map target.id target
+  let update (target : node) : node =
+    Hashtbl.replace root_map target.id target; get target
 
   let check_exists (target : string) : unit =
     ignore @@ Hashtbl.find root_map target
