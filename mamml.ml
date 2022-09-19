@@ -124,8 +124,9 @@ module Parser = struct
     let tokens =
       statement
       |> Str.global_replace (Str.regexp ";") ""
-      |> String.lowercase
+      |> String.lowercase_ascii
       |> String.split_on_char ' '
+      |> List.map (fun a -> Str.(global_replace (regexp "'") "" a))
     in
     let rec aux = function
       | a :: (b :: t) ->
@@ -137,9 +138,10 @@ module Parser = struct
            }
       | [] -> None
       | _ -> raise Parsing_exception
-    in match aux tokens with
-       | Some ast -> ast
-       | None -> raise Parsing_exception
+    in
+    match aux tokens with
+    | Some ast -> ast
+    | None -> raise Parsing_exception
 end
 
 module Core = struct
@@ -147,17 +149,17 @@ module Core = struct
 
   let root_map = Hashtbl.create ~random: true 512
 
-  let get (target : node) : node =
-    Hashtbl.find root_map target.id
+  let get (target : node) : string =
+    let n = Hashtbl.find root_map target.id in
+    string_of_type n.data
   
-  let put (target : node) : node =
-    Hashtbl.add root_map target.id target; get target
+  let put (target : node) : string =
+    Hashtbl.add root_map target.id target; target.id
 
-  let delete (target : node) : node =    
-    let data = get target in
-    Hashtbl.remove root_map data.id; data
+  let delete (target : node) : string =    
+    Hashtbl.remove root_map target.id; get target
 
-  let update (target : node) : node =
+  let update (target : node) : string =
     Hashtbl.replace root_map target.id target; get target
 
   let check_exists (target : string) : unit =
@@ -179,6 +181,7 @@ module Core = struct
       match a.action with
       | To -> acc.raw <- a.data; acc.data <- (string_to_typed acc.raw a.data)
       | As -> acc.data <- (string_to_typed acc.raw a.data)
+      | Get -> acc.id <- a.data
       | Named -> acc.id <- a.data
       | Delete -> acc.id <- a.data
       | _ -> failwith "Impossible"
@@ -203,6 +206,15 @@ module Core = struct
     | (Delete, n) -> delete n
     | (Update, n) -> update n
     | _ -> failwith "Invalid root action, can only be: GET, PUT, DELETE, UPDATE"
+
+  let get_input () =
+    let statement = read_line () in
+    let result = parse_statement statement in
+    eval_ast result
 end
 
-let () = print_endline "Hello World"
+let () =
+  while true do
+        let result = Core.get_input() in
+            print_endline result
+  done

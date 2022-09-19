@@ -1,4 +1,4 @@
 (executable
  (name mamml)
  (public_name mamml.exe)
- (libraries yojson))
+ (libraries yojson unix str))
