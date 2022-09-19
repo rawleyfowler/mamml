@@ -123,31 +123,22 @@ module Core = struct
   open Data
 
   let root_map = Hashtbl.create ~random: true 512
-  
-  let put n =
-    let _ = match n.data with
-    | Json t -> "json"
-    | Int t -> "int"
-    | Float t -> "float"
-    | Text t -> t
-    | Uuid t -> t
-    | Blob t -> Bytes.to_string t
-    | Bool t -> "true"
-    | Date t -> "1992"
-    | Null -> "Nothing"
-    in Null
 
   let get (target : node) : Data.t =
-     Int 123
+    Hashtbl.find root_map target.id
+  
+  let put (target : node) : Data.t =
+    Hashtbl.add root_map target.id target; get target
 
   let delete (target : node) : Data.t =    
-    Null
+    let data = get target in
+    Hashtbl.remove root_map data.id; data
 
   let update (target : node) : Data.t =
-    Null
+    Hashtbl.replace root_map target.id target
 
   let check_exists (target : string) : unit =
-    if false then failwith ""
+    ignore @@ Hashtbl.find root_map target
 
   open Parser
   (* Evaluate the AST and return the node, plus the action to take: (action, node) *)
@@ -170,12 +161,12 @@ module Core = struct
       | _ -> failwith "Impossible"
     in
     let handle_next a =
-      (match a.action with
+      match a.action with
       | Update -> check_exists a.data
       | As -> acc.data <- (string_to_typed acc.raw a.data)
-      | Get -> acc.raw <- a.data
+      | Get -> acc.id <- a.data
       | Put -> acc.raw <- a.data
-      | _ -> failwith "Impossible")
+      | _ -> failwith "Impossible"
     in
     let rec aux (a : ast) =
       match a.next with
