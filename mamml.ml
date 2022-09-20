@@ -96,6 +96,7 @@ end
 (* Since the syntax is similar to SQL, and fairly simple, we can ignore lexing I think, and just parse. *)
 module Parser = struct
   exception Parsing_error
+  exception Invalid_token of string
   
   type action_token =
     | Get
@@ -114,7 +115,7 @@ module Parser = struct
     | "delete" -> Delete
     | "as" -> As
     | "named" -> Named
-    | _ -> failwith "Invalid token"
+    | s -> raise (Invalid_token s)
   
   type ast = {
       action : action_token;
@@ -152,6 +153,8 @@ module Parser = struct
 end
 
 module Core = struct
+  exception Invalid_action of string
+  
   open Data
 
   let root_map = Hashtbl.create ~random: true 512
@@ -213,7 +216,7 @@ module Core = struct
     | (Put, n) -> put n
     | (Delete, n) -> delete n
     | (Update, n) -> update n
-    | _ -> failwith "Invalid root action, can only be: GET, PUT, DELETE, UPDATE"
+    | _ -> raise (Invalid_action (Printf.sprintf "Invalid root action"))
 
   let get_input () =
     let statement = read_line () in
@@ -223,6 +226,8 @@ end
 
 let () =
   while true do
-        let result = Core.get_input() in
-            print_endline result
+    try
+      let result = Core.get_input() in
+      print_endline result
+    with t -> print_endline @@ Printexc.to_string t
   done
