@@ -91,12 +91,26 @@ module Data = struct
     | Bool t -> string_of_bool t
     | Date t -> string_of_int t
     | Null -> "null"
+
+  let is_valid_type_string = function
+    | "json" -> true
+    | "text" -> true
+    | "uuid" -> true
+    | "int" -> true
+    | "float" -> true
+    | "blob" -> true
+    | "bool" -> true
+    | "date" -> true
+    | "null" -> true
+    | _ -> false
 end
 
 (* Since the syntax is similar to SQL, and fairly simple, we can ignore lexing I think, and just parse. *)
 module Parser = struct
   exception Parsing_error
   exception Invalid_token of string
+  exception Invalid_type of string
+  exception Invalid_string
   
   type action_token =
     | Get
@@ -123,27 +137,69 @@ module Parser = struct
       next : ast option;
     }
 
+  let ends_with s c =
+    match String.length s with
+    | 0 -> failwith "Impossible"
+    | 1 -> (String.get s 0) = c
+    | _ ->
+       let len = (String.length s) - 2 in
+       String.rcontains_from s len c
+
+  let starts_with s c =
+    match String.length s with
+    | 0 -> failwith "Impossible"
+    | 1 -> (String.get s 0) = c
+    | _ -> String.contains_from s 1 c
+
+  let compile_single_quote_string rest =
+    let buff = Buffer.create 512 in
+    let rec compile_rest = function
+      | h :: t ->
+         Buffer.add_string buff h;
+         if ends_with h '\'' then
+           let result = Str.global_replace (Str.regexp "'") "" @@ Buffer.contents buff in
+           (result, t)
+         else compile_rest t
+      | [] -> raise Invalid_string
+    in compile_rest rest
+          
   let parse_statement (statement : string) : ast =
     let tokens =
       statement
       |> Str.global_replace (Str.regexp ";") ""
-      |> String.lowercase_ascii
       |> String.split_on_char ' '
-      |> List.map (fun a -> Str.(global_replace (regexp "'") "" a))
     in
-    let confirm_type n =
-        ignore (Data.string_to_typed "1" n)
+    let confirm_type t =
+        if not @@ Data.is_valid_type_string t then raise (Invalid_type t);
     in
     let rec aux = function
-      | a :: (b :: t) ->
-         let action = action_token_of_string a in
-         if action = As then confirm_type b;
-         Some
-           {
-             action = action;
-             data = b;
-             next = aux t 
-           }
+      | a :: (b :: t as rest) ->
+         let action =
+           a
+           |> String.lowercase_ascii
+           |> action_token_of_string
+         in
+         let data = ref b in
+         let check_as_action () =
+           data := String.lowercase_ascii !data;
+           confirm_type !data;
+         in
+         if action = As then check_as_action ();
+         if starts_with !data '\'' then
+           let (content, rem) = compile_single_quote_string rest in
+           Some
+             {
+               action = action;
+               data = content;
+               next = aux rem
+             }
+         else 
+           Some
+             {
+               action = action;
+               data = !data;
+               next = aux t
+             }
       | [] -> None
       | _ -> raise Parsing_error
     in
