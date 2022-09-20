@@ -50,6 +50,8 @@
  *)
 
 module Data = struct
+  exception Invalid_type_error
+  
   type t = 
     | Json of Yojson.Safe.t
     | Int of int
@@ -65,7 +67,7 @@ module Data = struct
       created_at : int;
       mutable raw : string;
       mutable data : t;
-    }    
+    }
 
   let string_to_typed (d : string) = function
     | "json" -> Json (Yojson.Safe.from_string d)
@@ -77,7 +79,7 @@ module Data = struct
     | "bool" -> Bool (bool_of_string d)
     | "date" -> Date (int_of_string d)
     | "null" -> Null
-    | _ -> failwith "Invalid type, this should have been caught by the parser!"
+    | _ -> raise Invalid_type_error
 
   let string_of_type = function
     | Json t -> Yojson.Safe.to_string t
@@ -93,7 +95,7 @@ end
 
 (* Since the syntax is similar to SQL, and fairly simple, we can ignore lexing I think, and just parse. *)
 module Parser = struct
-  exception Parsing_exception
+  exception Parsing_error
   
   type action_token =
     | Get
@@ -128,20 +130,25 @@ module Parser = struct
       |> String.split_on_char ' '
       |> List.map (fun a -> Str.(global_replace (regexp "'") "" a))
     in
+    let confirm_type n =
+        ignore (Data.string_to_typed "1" n)
+    in
     let rec aux = function
       | a :: (b :: t) ->
+         let action = action_token_of_string a in
+         if action = As then confirm_type b;
          Some
            {
-             action = action_token_of_string a;
+             action = action;
              data = b;
              next = aux t 
            }
       | [] -> None
-      | _ -> raise Parsing_exception
+      | _ -> raise Parsing_error
     in
     match aux tokens with
     | Some ast -> ast
-    | None -> raise Parsing_exception
+    | None -> raise Parsing_error
 end
 
 module Core = struct
@@ -156,8 +163,9 @@ module Core = struct
   let put (target : node) : string =
     Hashtbl.add root_map target.id target; target.id
 
-  let delete (target : node) : string =    
-    Hashtbl.remove root_map target.id; get target
+  let delete (target : node) : string =
+    let old = get target in
+    Hashtbl.remove root_map target.id; old
 
   let update (target : node) : string =
     Hashtbl.replace root_map target.id target; get target
@@ -188,7 +196,7 @@ module Core = struct
     in
     let handle_next a =
       match a.action with
-      | Update -> check_exists a.data
+      | Update -> check_exists a.data; acc.id <- a.data
       | As -> acc.data <- (string_to_typed acc.raw a.data)
       | Get -> acc.id <- a.data
       | Put -> acc.raw <- a.data
