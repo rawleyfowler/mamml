@@ -292,5 +292,5 @@ let () =
     print_endline @@
       try
         Core.get_input ()
-      with t -> Printexc.to_string t
+      with t -> Printf.sprintf {|{ "error": "%s" }|} @@ Printexc.to_string t
   done
