@@ -50,7 +50,7 @@
  *)
 
 module Data = struct
-  exception Invalid_type_error
+  exception Invalid_type_from_string
   
   type t = 
     | Json of Yojson.Safe.t
@@ -79,7 +79,7 @@ module Data = struct
     | "bool" -> Bool (bool_of_string d)
     | "date" -> Date (int_of_string d)
     | "null" -> Null
-    | _ -> raise Invalid_type_error
+    | _ -> raise Invalid_type_from_string
 
   let string_of_type = function
     | Json t -> Yojson.Safe.to_string t
@@ -139,25 +139,26 @@ module Parser = struct
 
   let ends_with s c =
     match String.length s with
-    | 0 -> failwith "Impossible"
-    | 1 -> (String.get s 0) = c
+    | 0 -> raise Invalid_string
     | _ ->
-       let len = (String.length s) - 2 in
+       let len = (String.length s) - 1 in
        String.rcontains_from s len c
 
   let starts_with s c =
     match String.length s with
-    | 0 -> failwith "Impossible"
-    | 1 -> (String.get s 0) = c
-    | _ -> String.contains_from s 1 c
+    | 0 -> raise Invalid_string
+    | _ -> String.contains_from s 0 c
 
   let compile_single_quote_string rest =
     let buff = Buffer.create 512 in
     let rec compile_rest = function
       | h :: t ->
          Buffer.add_string buff h;
+         print_endline "AHHHHHHHHHHH";
+         print_endline @@ Buffer.contents buff;
          if ends_with h '\'' then
-           let result = Str.global_replace (Str.regexp "'") "" @@ Buffer.contents buff in
+           let result =
+             Str.global_replace (Str.regexp "'") "" @@ Buffer.contents buff in
            (result, t)
          else compile_rest t
       | [] -> raise Invalid_string
@@ -173,7 +174,7 @@ module Parser = struct
         if not @@ Data.is_valid_type_string t then raise (Invalid_type t);
     in
     let rec aux = function
-      | a :: (b :: t as rest) ->
+      | a :: (b :: tail as rest) ->
          let action =
            a
            |> String.lowercase_ascii
@@ -187,6 +188,8 @@ module Parser = struct
          if action = As then check_as_action ();
          if starts_with !data '\'' then
            let (content, rem) = compile_single_quote_string rest in
+           print_endline "ITER"; 
+           List.iter print_endline rem;
            Some
              {
                action = action;
@@ -198,7 +201,7 @@ module Parser = struct
              {
                action = action;
                data = !data;
-               next = aux t
+               next = aux tail
              }
       | [] -> None
       | _ -> raise Parsing_error
@@ -233,7 +236,7 @@ module Core = struct
     ignore @@ Hashtbl.find root_map target
 
   open Parser
-  (* Evaluate the AST and return the node, plus the action to take: (action, node) *)
+  (* Evaluate the AST and return the node that results, plus the action to take: (action, node) *)
   let eval_ast (a : ast) =
     let root_action = a.action in
     let acc = {
@@ -243,7 +246,6 @@ module Core = struct
         created_at = int_of_float @@ Unix.time ();
       }
     in
-    (* The parser should ensure that singularly evaluated expressions (like DELETE) never hit this match *)
     let handle_no_next a =
       match a.action with
       | To -> acc.raw <- a.data; acc.data <- (string_to_typed acc.raw a.data)
@@ -272,7 +274,7 @@ module Core = struct
     | (Put, n) -> put n
     | (Delete, n) -> delete n
     | (Update, n) -> update n
-    | _ -> raise (Invalid_action (Printf.sprintf "Invalid root action"))
+    | _ -> raise (Invalid_action "The root action of a command must be: GET, PUT, DELETE, or UPDATE")
 
   let get_input () =
     let statement = read_line () in
@@ -282,8 +284,8 @@ end
 
 let () =
   while true do
-    try
-      let result = Core.get_input() in
-      print_endline result
-    with t -> print_endline @@ Printexc.to_string t
+    print_endline @@
+      try
+        Core.get_input ()
+      with t -> Printexc.to_string t
   done
