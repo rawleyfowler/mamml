@@ -67,10 +67,13 @@ module Data = struct
       created_at : int;
       mutable raw : string;
       mutable data : t;
-    }
-
+    }  
+      
   let string_to_typed (d : string) = function
-    | "json" -> Json (Yojson.Safe.from_string d)
+    | "json" ->
+       if d = "" then
+         Json (Yojson.Safe.from_string {|{ "placeholder": "placeholder" }|})
+       else Json (Yojson.Safe.from_string d)
     | "text" -> Text d
     | "uuid" -> Uuid d
     | "int" -> Int (int_of_string d)
@@ -137,12 +140,15 @@ module Parser = struct
       next : ast option;
     }
 
+  let string_quote = '`'
+  let string_quote_str = (String.make 1 string_quote)
+
   let ends_with s c =
     match String.length s with
     | 0 -> raise Invalid_string
     | _ ->
        let len = (String.length s) - 1 in
-       String.rcontains_from s len c
+       String.contains_from s len c
 
   let starts_with s c =
     match String.length s with
@@ -154,11 +160,10 @@ module Parser = struct
     let rec compile_rest = function
       | h :: t ->
          Buffer.add_string buff h;
-         print_endline "AHHHHHHHHHHH";
-         print_endline @@ Buffer.contents buff;
-         if ends_with h '\'' then
+         if t != [] then Buffer.add_char buff ' ';
+         if ends_with h string_quote then
            let result =
-             Str.global_replace (Str.regexp "'") "" @@ Buffer.contents buff in
+             Str.global_replace (Str.regexp string_quote_str) "" @@ Buffer.contents buff in
            (result, t)
          else compile_rest t
       | [] -> raise Invalid_string
@@ -171,7 +176,7 @@ module Parser = struct
       |> String.split_on_char ' '
     in
     let confirm_type t =
-        if not @@ Data.is_valid_type_string t then raise (Invalid_type t);
+      if not @@ Data.is_valid_type_string t then raise (Invalid_type t);
     in
     let rec aux = function
       | a :: (b :: tail as rest) ->
@@ -186,17 +191,15 @@ module Parser = struct
            confirm_type !data;
          in
          if action = As then check_as_action ();
-         if starts_with !data '\'' then
+         if starts_with !data string_quote then
            let (content, rem) = compile_single_quote_string rest in
-           print_endline "ITER"; 
-           List.iter print_endline rem;
            Some
              {
                action = action;
                data = content;
                next = aux rem
              }
-         else 
+         else
            Some
              {
                action = action;
@@ -220,7 +223,9 @@ module Core = struct
 
   let get (target : node) : string =
     let n = Hashtbl.find root_map target.id in
-    string_of_type n.data
+    match target.data with
+    | Json _ -> Printf.sprintf {| { "%s": "%s" } |} target.id (string_of_type n.data)
+    | _ -> string_of_type n.data
   
   let put (target : node) : string =
     Hashtbl.add root_map target.id target; target.id
