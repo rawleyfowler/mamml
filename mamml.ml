@@ -160,7 +160,7 @@ module Parser = struct
     let rec compile_rest = function
       | h :: t ->
          Buffer.add_string buff h;
-         if t != [] then Buffer.add_char buff ' ';
+         if not @@ ends_with h string_quote then Buffer.add_char buff ' ';
          if ends_with h string_quote then
            let result =
              Str.global_replace (Str.regexp string_quote_str) "" @@ Buffer.contents buff in
