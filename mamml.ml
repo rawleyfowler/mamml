@@ -219,33 +219,60 @@ module Core = struct
   exception Invalid_action of string
   exception Invalid_json_target of string
   exception Type_mismatch
+  exception Syntax_error
   
   open Data
 
   let root_map = Hashtbl.create ~random: true 512
 
-  let get_json (target : node) : string =
+  (*
+    (* Function to clone records, this may come in handy later if we want to add copy/paste *)
+    let clone (type t) (x : t) : t =
+      let buff = Marshal.(to_bytes x [No_sharing; Closures]) in
+      Marshal.from_bytes buff 0
+  *)
+
+  let remove_char s c =
+    let rgx = String.make 1 c in
+    Str.(global_replace (regexp rgx) "" s)
+
+    (* 
+      Takes a list of keys and drills into the json to find the value:
+      ie: ["hello"] + { "hello": "world" } = "world"
+      ie2: ["hello", "friend"] + { "hello": { "friend": "my friend" } } = "my friend"
+    *)
+  let get_json_by_psv psv json =
+    let open Yojson.Safe.Util in
+    let result = List.fold_left (fun c a -> c |> member a) json psv in
+    let open Yojson.Safe in
+      match result with
+      | `Assoc _ -> to_string result
+      | `Variant _ -> to_string result
+      | `List _ -> to_string result
+      | `Null -> to_string result
+      | _ -> remove_char (to_string result) '"' (* We don't want to return with "" around strings *)
+
+  let get_json (target : node) : Data.t =
     let tokens = String.split_on_char '.' target.id in
     match tokens with
     | [] -> raise (Invalid_json_target target.id)
     | [_] -> raise (Invalid_json_target target.id)
     | h :: t ->
-       let n = Hashtbl.find root_map h in
-         match n.data with
-         | Json d ->
-            let open Yojson.Safe.Util in
-            Yojson.Safe.to_string @@ List.fold_right (fun a c -> c |> member a) t d
-         | _ -> raise Type_mismatch
-   
+      let n = Hashtbl.find root_map h in
+      match n.data with
+      | Json d -> Text (get_json_by_psv t d)
+      | _ -> raise Type_mismatch
 
   let get (target : node) : string =
-    if String.contains target.id '.' then
-      get_json target
-    else
-      let n = Hashtbl.find root_map target.id in
-      match target.data with
-      | Json _ -> Printf.sprintf {| { "%s": "%s" } |} target.id (string_of_type n.data)
-      | _ -> string_of_type n.data
+    let data =
+      if String.contains target.id '.' then
+        get_json target
+      else
+        (Hashtbl.find root_map target.id).data
+    in
+    match data with
+    | Json _ -> Printf.sprintf {|{"%s":%s}|} target.id (string_of_type data)
+    | _ -> string_of_type data
   
   let put (target : node) : string =
     if String.contains target.id '.' then
@@ -281,7 +308,7 @@ module Core = struct
       | Get -> acc.id <- a.data
       | Named -> acc.id <- a.data
       | Delete -> acc.id <- a.data
-      | _ -> failwith "Impossible"
+      | _ -> raise Syntax_error
     in
     let handle_next a =
       match a.action with
@@ -289,7 +316,7 @@ module Core = struct
       | As -> acc.data <- (string_to_typed acc.raw a.data)
       | Get -> acc.id <- a.data
       | Put -> acc.raw <- a.data
-      | _ -> failwith "Impossible"
+      | _ -> raise Syntax_error
     in
     let rec aux (a : ast) =
       match a.next with
