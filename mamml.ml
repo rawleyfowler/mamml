@@ -215,20 +215,43 @@ module Parser = struct
 end
 
 module Core = struct
+  exception Invalid_naming of string
   exception Invalid_action of string
+  exception Invalid_json_target of string
+  exception Type_mismatch
   
   open Data
 
   let root_map = Hashtbl.create ~random: true 512
 
+  let get_json (target : node) : string =
+    let tokens = String.split_on_char '.' target.id in
+    match tokens with
+    | [] -> raise (Invalid_json_target target.id)
+    | [_] -> raise (Invalid_json_target target.id)
+    | h :: t ->
+       let n = Hashtbl.find root_map h in
+         match n.data with
+         | Json d ->
+            let open Yojson.Safe.Util in
+            Yojson.Safe.to_string @@ List.fold_right (fun a c -> c |> member a) t d
+         | _ -> raise Type_mismatch
+   
+
   let get (target : node) : string =
-    let n = Hashtbl.find root_map target.id in
-    match target.data with
-    | Json _ -> Printf.sprintf {| { "%s": "%s" } |} target.id (string_of_type n.data)
-    | _ -> string_of_type n.data
+    if String.contains target.id '.' then
+      get_json target
+    else
+      let n = Hashtbl.find root_map target.id in
+      match target.data with
+      | Json _ -> Printf.sprintf {| { "%s": "%s" } |} target.id (string_of_type n.data)
+      | _ -> string_of_type n.data
   
   let put (target : node) : string =
-    Hashtbl.add root_map target.id target; target.id
+    if String.contains target.id '.' then
+      raise (Invalid_naming target.id)
+    else
+      Hashtbl.add root_map target.id target; target.id
 
   let delete (target : node) : string =
     let old = get target in
@@ -241,7 +264,7 @@ module Core = struct
     ignore @@ Hashtbl.find root_map target
 
   open Parser
-  (* Evaluate the AST and return the node that results, plus the action to take: (action, node) *)
+  
   let eval_ast (a : ast) =
     let root_action = a.action in
     let acc = {
