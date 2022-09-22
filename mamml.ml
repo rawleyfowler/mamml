@@ -86,7 +86,7 @@ module Data = struct
     | "null" -> Null
     | _ -> raise Invalid_type_from_string
 
-  let type_of_string = function
+  let string_of_type = function
     | Json t -> Yojson.Safe.to_string t
     | Int t -> string_of_int t
     | Float t -> string_of_float t
@@ -130,7 +130,7 @@ module Data = struct
     match n.data with
     | Text t -> handle_text n.id t (type_to_string n.data)
     | Uuid t -> handle_text n.id t (type_to_string n.data)
-    | _ -> handle_non_text n.id (type_of_string n.data) (type_to_string n.data)
+    | _ -> handle_non_text n.id (string_of_type n.data) (type_to_string n.data)
 
   let is_valid_type_string = function
     | "json" -> true
@@ -267,23 +267,27 @@ module Core = struct
     exception Export_error
 
     let export map =
-      let json_seq = Seq.map jsonify_node (Hashtbl.to_seq_values map) in
-      let json = Seq.fold_left (fun a b -> b ^ a) "{\r\n" json_seq in
-      String.(sub json 0 (length json - 3))  ^ "\r\n}"
+      try
+        let json_seq = Seq.map jsonify_node (Hashtbl.to_seq_values map) in
+        let json = Seq.fold_left (fun a b -> b ^ a) "{\r\n" json_seq in
+        String.(sub json 0 (length json - 3))  ^ "\r\n}"
+      with _ -> raise Export_error
 
     let import file =
-      let open Yojson.Safe.Util in
-      let json = Yojson.Safe.from_file file in
-      let push_to_map (id, data) =
-        let n = {
-          id = id;
-          data = string_to_typed 
-            (data |> member "node" |> member "data" |> to_string) 
-            (data |> member "type" |> to_string );
-          created_at = data |> member "created_at" |> to_int;
-          raw = ""
-        } in Hashtbl.add root_map id n
-      in List.iter push_to_map (to_assoc json)
+      try
+        let open Yojson.Safe.Util in
+        let json = Yojson.Safe.from_file file in
+        let push_to_map (id, data) =
+          let n = {
+            id = id;
+            data = string_to_typed 
+              (data |> member "node" |> member "data" |> to_string) 
+              (data |> member "type" |> to_string );
+            created_at = data |> member "created_at" |> to_int;
+            raw = ""
+          } in Hashtbl.add root_map id n
+        in List.iter push_to_map (to_assoc json)
+      with _ -> raise Import_error
   end
 
   (*
@@ -327,8 +331,7 @@ module Core = struct
         get_json target
       else
         (Hashtbl.find root_map target.id).data
-    in 
-    string_of_type data
+    in string_of_type data
 
   let put (target : node) : string =
     if String.contains target.id '.' then
