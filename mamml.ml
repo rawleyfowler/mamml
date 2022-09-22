@@ -354,7 +354,7 @@ module Core = struct
     | (Put, n) -> put n
     | (Delete, n) -> delete n
     | (Update, n) -> update n
-    | _ -> print_endline @@ Persist.export root_map; raise (Invalid_action "The root action of a command must be: GET, PUT, DELETE, or UPDATE")
+    | _ -> raise (Invalid_action "The root action of a command must be: GET, PUT, DELETE, or UPDATE")
 
   let get_input () =
     let statement = read_line () in
