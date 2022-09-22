@@ -62,13 +62,15 @@ module Data = struct
     | Bool of bool              (* Stored as 1 or 0 *)
     | Date of int               (* Unix time *)
     | Null
-  and node = { (* What is cached *)
-      mutable id : string;
-      created_at : int;
-      mutable raw : string;
-      mutable data : t;
-    }  
-      
+    [@@deriving yojson]
+  and node = { 
+      (* What is cached *)
+      mutable id : string [@key "id"];
+      created_at : int [@key "created_at"];
+      mutable raw : string [@key "raw"];
+      mutable data : t [@key "data"];
+    } [@@deriving yojson]
+
   let string_to_typed (d : string) = function
     | "json" ->
        if d = "" then
@@ -94,6 +96,25 @@ module Data = struct
     | Bool t -> string_of_bool t
     | Date t -> string_of_int t
     | Null -> "null"
+
+  let jsonify_node n =
+    let handle_text id str =
+      Printf.sprintf
+      {|
+      "%s": "%s",\r\n
+      |} id str
+    in
+    let handle_non_text id str =
+      Printf.sprintf
+      {|
+      "%s": %s,\r\n
+      |} id str
+    in
+    match n.data with
+    | Text t -> handle_text n.id t
+    | Uuid t -> handle_text n.id t
+    | _ -> handle_non_text n.id (string_of_type n.data)
+
 
   let is_valid_type_string = function
     | "json" -> true
@@ -155,7 +176,7 @@ module Parser = struct
     | 0 -> raise Invalid_string
     | _ -> String.contains_from s 0 c
 
-  let compile_single_quote_string rest =
+  let compile_quoted_string rest =
     let buff = Buffer.create 512 in
     let rec compile_rest = function
       | h :: t ->
@@ -192,7 +213,7 @@ module Parser = struct
          in
          if action = As then check_as_action ();
          if starts_with !data string_quote then
-           let (content, rem) = compile_single_quote_string rest in
+           let (content, rem) = compile_quoted_string rest in
            Some
              {
                action = action;
@@ -225,6 +246,15 @@ module Core = struct
 
   let root_map = Hashtbl.create ~random: true 512
 
+  module Persist = struct
+    let export map =
+      let json_seq = Seq.map jsonify_node (Hashtbl.to_seq_values map) in
+      let json = Seq.fold_left (fun a b -> b ^ a) "{\r\n" json_seq in
+      String.(sub json 0 (length json - 3))  ^ "\r\n}"
+
+    (* let import = () *)
+  end
+
   (*
     (* Function to clone records, this may come in handy later if we want to add copy/paste *)
     let clone (type t) (x : t) : t =
@@ -236,20 +266,17 @@ module Core = struct
     let rgx = String.make 1 c in
     Str.(global_replace (regexp rgx) "" s)
 
-    (* 
-      Takes a list of keys and drills into the json to find the value:
-      ie: ["hello"] + { "hello": "world" } = "world"
-      ie2: ["hello", "friend"] + { "hello": { "friend": "my friend" } } = "my friend"
-    *)
+  (* 
+    Takes a list of keys and drills into the json to find the value:
+    ie: ["hello"] + { "hello": "world" } = "world"
+    ie2: ["hello", "friend"] + { "hello": { "friend": "my friend" } } = "my friend"
+  *)
   let get_json_by_psv psv json =
     let open Yojson.Safe.Util in
     let result = List.fold_left (fun c a -> c |> member a) json psv in
     let open Yojson.Safe in
       match result with
-      | `Assoc _ -> to_string result
-      | `Variant _ -> to_string result
-      | `List _ -> to_string result
-      | `Null -> to_string result
+      | `Assoc _ | `Variant _ | `List _ | `Null -> to_string result
       | _ -> remove_char (to_string result) '"' (* We don't want to return with "" around strings *)
 
   let get_json (target : node) : Data.t =
@@ -269,11 +296,9 @@ module Core = struct
         get_json target
       else
         (Hashtbl.find root_map target.id).data
-    in
-    match data with
-    | Json _ -> Printf.sprintf {|{"%s":%s}|} target.id (string_of_type data)
-    | _ -> string_of_type data
-  
+    in 
+    string_of_type data
+
   let put (target : node) : string =
     if String.contains target.id '.' then
       raise (Invalid_naming target.id)
@@ -329,7 +354,7 @@ module Core = struct
     | (Put, n) -> put n
     | (Delete, n) -> delete n
     | (Update, n) -> update n
-    | _ -> raise (Invalid_action "The root action of a command must be: GET, PUT, DELETE, or UPDATE")
+    | _ -> print_endline @@ Persist.export root_map; raise (Invalid_action "The root action of a command must be: GET, PUT, DELETE, or UPDATE")
 
   let get_input () =
     let statement = read_line () in
@@ -342,5 +367,5 @@ let () =
     print_endline @@
       try
         Core.get_input ()
-      with t -> Printf.sprintf {|{ "error": "%s" }|} @@ Printexc.to_string t
+      with t -> Printf.sprintf {|{"error":"%s"}|} @@ Printexc.to_string t
   done

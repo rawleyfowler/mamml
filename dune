@@ -1,4 +1,5 @@
 (executable
  (name mamml)
  (public_name mamml.exe)
- (libraries yojson unix str))
+ (libraries yojson ppx_deriving_yojson.runtime unix str)
+ (preprocess (pps ppx_deriving_yojson)))

@@ -1,5 +1,5 @@
 # mamml
-A caching system with first class JSON support, static typing, and a network interface.
+A caching database with first class JSON support, static typing, and (soon to have) a network interface.
 
 ## Usage
 Note: We use backticks \` for strings.
@@ -9,9 +9,11 @@ Note: We use backticks \` for strings.
 PUT 123 AS Number; -> Returns the unique ID for this node.
 PUT `{ "hello": "world" }` AS Json; -> Returns the unique ID for this node.
 PUT `{ "hello": "world" }` AS Json NAMED myJson; -> Returns the label 'myJson'.
+PUT `{ "json": { "some_num": 123 } }` AS Json NAMED myDeeperJson;
 GET myJson; -> `{ "hello": "world" }`
 GET myJson.hello; -> 'world'
 GET myJson.hello AS Json; -> '{ "hello": "world" }'
+GET myDeeperJson.json.some_num; -> 123
 ```
 ##### We can also just store primitives:
 ```
