@@ -115,7 +115,7 @@ module Data = struct
       "%s": {
         node: "%s",
         type: "%s"
-      },\r\n
+      },
       |} id str _type
     in
     let handle_non_text id str _type =
@@ -124,7 +124,7 @@ module Data = struct
       "%s": {
         node: %s,
         type: "%s"
-      },\r\n
+      },
       |} id str _type
     in
     match n.data with
@@ -153,6 +153,7 @@ module Parser = struct
   exception Invalid_string
   
   type action_token =
+    | Exit
     | Get
     | Put
     | Update
@@ -169,6 +170,7 @@ module Parser = struct
     | "delete" -> Delete
     | "as" -> As
     | "named" -> Named
+    | "exit" -> Exit
     | s -> raise (Invalid_token s)
   
   type ast = {
@@ -213,21 +215,19 @@ module Parser = struct
       |> String.split_on_char ' '
     in
     let confirm_type t =
-      if not @@ Data.is_valid_type_string t then raise (Invalid_type t);
+      let lowered_type = String.lowercase_ascii t in
+      if not @@ Data.is_valid_type_string lowered_type then raise (Invalid_type t) else lowered_type
+    in
+    let create_action a =
+      a
+      |> String.lowercase_ascii
+      |> action_token_of_string
     in
     let rec aux = function
       | a :: (b :: tail as rest) ->
-         let action =
-           a
-           |> String.lowercase_ascii
-           |> action_token_of_string
-         in
+         let action = create_action a in
          let data = ref b in
-         let check_as_action () =
-           data := String.lowercase_ascii !data;
-           confirm_type !data;
-         in
-         if action = As then check_as_action ();
+         if action = As then data := confirm_type !data;
          if starts_with !data string_quote then
            let (content, rem) = compile_quoted_string rest in
            Some
@@ -243,8 +243,15 @@ module Parser = struct
                data = !data;
                next = aux tail
              }
+      | [x] -> 
+        let action = create_action x in
+        Some 
+        {
+          action = action;
+          data = "";
+          next = None
+        }
       | [] -> None
-      | _ -> raise Parsing_error
     in
     match aux tokens with
     | Some ast -> ast
@@ -257,6 +264,7 @@ module Core = struct
   exception Invalid_json_target of string
   exception Type_mismatch
   exception Syntax_error
+  exception Exit_exception
   
   open Data
 
@@ -267,10 +275,11 @@ module Core = struct
     exception Export_error
 
     let export map =
+      if Hashtbl.length map = 0 then raise Export_error;
       try
         let json_seq = Seq.map jsonify_node (Hashtbl.to_seq_values map) in
-        let json = Seq.fold_left (fun a b -> b ^ a) "{\r\n" json_seq in
-        String.(sub json 0 (length json - 3))  ^ "\r\n}"
+        let json = Seq.fold_left (fun a b -> b ^ a) "" json_seq in
+        "{\n" ^ String.(sub json 0 (length json - 3))  ^ "\n}"
       with _ -> raise Export_error
 
     let import file =
@@ -362,6 +371,7 @@ module Core = struct
     in
     let handle_no_next a =
       match a.action with
+      | Exit -> raise Exit_exception
       | To -> acc.raw <- a.data; acc.data <- (string_to_typed acc.raw a.data)
       | As -> acc.data <- (string_to_typed acc.raw a.data)
       | Get -> acc.id <- a.data
@@ -401,5 +411,7 @@ let () =
     print_endline @@
       try
         Core.get_input ()
-      with t -> Printf.sprintf {|{"error":"%s"}|} @@ Printexc.to_string t
+      with
+      | Core.Exit_exception -> exit 1
+      | t -> Printf.sprintf {|{"error":"%s"}|} @@ Printexc.to_string t
   done
