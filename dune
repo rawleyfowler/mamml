@@ -3,3 +3,7 @@
  (public_name mamml.exe)
  (libraries yojson ppx_deriving_yojson.runtime unix str)
  (preprocess (pps ppx_deriving_yojson)))
+
+(env 
+ (dev
+  (flags (:standard -w -32))))

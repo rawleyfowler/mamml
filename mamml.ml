@@ -86,7 +86,7 @@ module Data = struct
     | "null" -> Null
     | _ -> raise Invalid_type_from_string
 
-  let string_of_type = function
+  let type_of_string = function
     | Json t -> Yojson.Safe.to_string t
     | Int t -> string_of_int t
     | Float t -> string_of_float t
@@ -97,24 +97,40 @@ module Data = struct
     | Date t -> string_of_int t
     | Null -> "null"
 
+  let type_to_string = function
+    | Json _ -> "json"
+    | Int _ -> "int"
+    | Float _ -> "float"
+    | Text _ -> "text"
+    | Uuid _ -> "uuid"
+    | Blob _ -> "blob"
+    | Bool _ -> "bool"
+    | Date _ -> "date"
+    | Null -> "null"
+
   let jsonify_node n =
-    let handle_text id str =
+    let handle_text id str _type =
       Printf.sprintf
       {|
-      "%s": "%s",\r\n
-      |} id str
+      "%s": {
+        node: "%s",
+        type: "%s"
+      },\r\n
+      |} id str _type
     in
-    let handle_non_text id str =
+    let handle_non_text id str _type =
       Printf.sprintf
       {|
-      "%s": %s,\r\n
-      |} id str
+      "%s": {
+        node: %s,
+        type: "%s"
+      },\r\n
+      |} id str _type
     in
     match n.data with
-    | Text t -> handle_text n.id t
-    | Uuid t -> handle_text n.id t
-    | _ -> handle_non_text n.id (string_of_type n.data)
-
+    | Text t -> handle_text n.id t (type_to_string n.data)
+    | Uuid t -> handle_text n.id t (type_to_string n.data)
+    | _ -> handle_non_text n.id (type_of_string n.data) (type_to_string n.data)
 
   let is_valid_type_string = function
     | "json" -> true
@@ -247,12 +263,27 @@ module Core = struct
   let root_map = Hashtbl.create ~random: true 512
 
   module Persist = struct
+    exception Import_error
+    exception Export_error
+
     let export map =
       let json_seq = Seq.map jsonify_node (Hashtbl.to_seq_values map) in
       let json = Seq.fold_left (fun a b -> b ^ a) "{\r\n" json_seq in
       String.(sub json 0 (length json - 3))  ^ "\r\n}"
 
-    (* let import = () *)
+    let import file =
+      let open Yojson.Safe.Util in
+      let json = Yojson.Safe.from_file file in
+      let push_to_map (id, data) =
+        let n = {
+          id = id;
+          data = string_to_typed 
+            (data |> member "node" |> member "data" |> to_string) 
+            (data |> member "type" |> to_string );
+          created_at = data |> member "created_at" |> to_int;
+          raw = ""
+        } in Hashtbl.add root_map id n
+      in List.iter push_to_map (to_assoc json)
   end
 
   (*
@@ -320,7 +351,7 @@ module Core = struct
   let eval_ast (a : ast) =
     let root_action = a.action in
     let acc = {
-        id = string_of_int @@ Oo.id (object end);
+        id = string_of_int @@ ((int_of_float @@ Unix.time ()) + Oo.id (object end));
         raw = "";
         data = Null;
         created_at = int_of_float @@ Unix.time ();
