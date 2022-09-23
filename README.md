@@ -2,6 +2,23 @@
 A caching database with first class JSON support, static typing, and (soon to have) a network interface.
 
 ## Usage
+
+### Installation
+```shell
+git clone https://github.com/rawleyfowler/mamml.git
+cd mamml
+eval $(opam env) # optional
+make install
+```
+
+### Development
+```shell
+git clone https://github.com/rawleyfowler/mamml.git
+cd mamml
+eval $(opam env) # optional
+dune exec mamml.exe
+```
+
 Note: We use backticks \` for strings.
 
 ##### Example valid mamml instructions:
