@@ -9,6 +9,7 @@ git clone https://github.com/rawleyfowler/mamml.git
 cd mamml
 eval $(opam env) # optional
 make install
+mamml
 ```
 
 ### Development
