@@ -8,8 +8,6 @@ homepage: "https://github.com/rawleyfowler/mamml"
 depends: [
   "dune" {>= "3.4"}
   "odoc" {with-doc}
-  "yojson" {>= "1.6.0"}
-  "ppx_deriving_yojson" {>= "3.3"}
 ]
 build: [
   ["dune" "subst"] {dev}
