@@ -37,11 +37,6 @@ module Parser :
     type action_token = Exit | Get | Put | Update | To | Delete | As | Named
     val action_token_of_string : string -> action_token
     type ast = { action : action_token; data : string; next : ast option; }
-    val string_quote : char
-    val string_quote_str : string
-    val ends_with : string -> char -> bool
-    val starts_with : string -> char -> bool
-    val compile_quoted_string : string list -> string * string list
     val parse_statement : string -> ast
   end
 module Core :
@@ -52,7 +47,6 @@ module Core :
     exception Type_mismatch
     exception Syntax_error
     exception Exit_exception
-    val root_map : (string, Data.node) Hashtbl.t
     module Persist :
       sig
         exception Import_error
@@ -60,14 +54,9 @@ module Core :
         val export : ('a, Data.node) Hashtbl.t -> string
         val import : string -> unit
       end
-    val remove_char : string -> char -> string
-    val get_json_by_psv : string list -> Yojson.Safe.t -> string
-    val get_json : Data.node -> Data.t
     val get : Data.node -> string
     val put : Data.node -> string
     val delete : Data.node -> string
     val update : Data.node -> string
-    val check_exists : string -> unit
-    val eval_ast : Parser.ast -> string
     val get_input : unit -> string
   end
