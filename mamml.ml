@@ -24,9 +24,9 @@
 
     Example valid mamml instructions for retrieval:
 
-    GET myJson; -> '{ "hello": "world" }'
-    GET myJson.hello'; -> 'world'
-    GET myJson.hello AS Json; -> '{ "hello": "world" }'
+    GET myJson; -> { "hello": "world" }
+    GET myJson.hello'; -> world
+    GET myJson.hello AS Json; -> { "hello": "world" }
 
     We can also just store primitives
 
@@ -207,13 +207,16 @@ module Parser = struct
     let tokens =
       statement
       |> Str.global_replace (Str.regexp ";") ""
+      |> Str.global_replace (Str.regexp "\r") ""
+      |> Str.global_replace (Str.regexp "\n") ""
       |> String.split_on_char ' '
     in
     let confirm_type t =
       let lowered_type = String.lowercase_ascii t in
-      if not @@ Data.is_valid_type_string lowered_type then
+      if Data.is_valid_type_string lowered_type then
+        lowered_type
+      else 
         raise (Invalid_type t)
-      else lowered_type
     in
     let create_action a =
       a |> String.lowercase_ascii |> action_token_of_string
@@ -410,34 +413,32 @@ end
 module Net = struct
   open Unix
 
+  let handle_conn (s, f) =
+    let cin = in_channel_of_descr s in
+    let cout = out_channel_of_descr s in
+    try
+      while true do
+        let data = input_line cin in
+        let result = f data in
+        Printf.fprintf cout "%s\r\n%!" result;
+      done
+    with
+    | Core.Exit_exception -> shutdown s SHUTDOWN_ALL
+    | e -> Printf.fprintf cout {eos|{"error": "%s"}\r\n%!|eos} (Printexc.to_string e)
+
   let start ?(port = 5555) f =
     Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
-    let rec handle so f =
+    let rec listen_loop so f =
       let (s, _) = accept ?cloexec:(Some false) so in
-      try
-        let cout = out_channel_of_descr s in
-        let cin = in_channel_of_descr s in
-        let data = f @@ input_line cin in
-        Printf.fprintf cout "%s\r\n%!" data;
-        close_out cout;
-        close_in cin;
-        handle so f
-      with Core.Exit_exception -> shutdown s SHUTDOWN_ALL
+      let _ =
+        Thread.create handle_conn (s, f)
+      in listen_loop so f
     in
     let sock = socket PF_INET SOCK_STREAM 0 in
     let () = setsockopt sock SO_REUSEADDR true in
     let () = bind sock (ADDR_INET (inet_addr_of_string "0.0.0.0", port)) in
     listen sock 5;
-    handle sock f
+    listen_loop sock f
 end
 
 let () = Net.start Core.handle_input
-
-(* let () =
-  while true do
-    print_endline
-    @@
-    try Core.get_input () with
-    | Core.Exit_exception -> exit 1
-    | t -> Printf.sprintf {|{"error":"%s"}|} @@ Printexc.to_string t
-  done *)

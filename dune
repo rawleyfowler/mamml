@@ -1,9 +1,11 @@
 (executable
  (name mamml)
  (public_name mamml.exe)
- (libraries yojson ppx_deriving_yojson.runtime unix str)
- (preprocess (pps ppx_deriving_yojson)))
+ (libraries threads yojson ppx_deriving_yojson.runtime unix str)
+ (preprocess
+  (pps ppx_deriving_yojson)))
 
-(env 
+(env
  (dev
-  (flags (:standard -w -32))))
+  (flags
+   (:standard -w -32))))
