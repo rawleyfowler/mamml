@@ -413,8 +413,8 @@ module Net = struct
   let start ?(port = 5555) f =
     Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
     let rec handle so f =
+      let (s, _) = accept ?cloexec:(Some false) so in
       try
-        let (s, _) = accept ?cloexec:(Some false) so in
         let cout = out_channel_of_descr s in
         let cin = in_channel_of_descr s in
         let data = f @@ input_line cin in
@@ -422,7 +422,7 @@ module Net = struct
         close_out cout;
         close_in cin;
         handle so f
-      with Core.Exit_exception -> shutdown so SHUTDOWN_ALL
+      with Core.Exit_exception -> shutdown s SHUTDOWN_ALL
     in
     let sock = socket PF_INET SOCK_STREAM 0 in
     let () = setsockopt sock SO_REUSEADDR true in
