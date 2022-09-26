@@ -250,6 +250,7 @@ module Core = struct
 
   let root_map = Hashtbl.create ~random:true 512
 
+  (* TODO: Wire up Export and Import to the commands *)
   module Persist = struct
     exception Import_error
     exception Export_error
