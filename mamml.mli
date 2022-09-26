@@ -58,5 +58,4 @@ module Core :
     val put : Data.node -> string
     val delete : Data.node -> string
     val update : Data.node -> string
-    val get_input : unit -> string
   end

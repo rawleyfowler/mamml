@@ -398,17 +398,40 @@ module Core = struct
           (Invalid_action
              "The root action of a command must be: GET, PUT, DELETE, or UPDATE")
 
-  let get_input () =
-    let statement = read_line () in
-    let result = parse_statement statement in
+  let handle_input input =
+    let result = parse_statement input in
     eval_ast result
 end
 
-let () =
+module Net = struct
+  open Unix
+
+  let start ?(port = 5555) f =
+    Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+    let rec handle so f =
+      let (s, _) = accept ?cloexec:(Some false) so in
+      let cout = out_channel_of_descr s in
+      let cin = in_channel_of_descr s in
+      let data = f @@ input_line cin in
+      Printf.fprintf cout "%s\r\n%!" data;
+      close_out cout;
+      close_in cin;
+      handle so f
+    in
+    let sock = socket PF_INET SOCK_STREAM 0 in
+    let () = setsockopt sock SO_REUSEADDR true in
+    let () = bind sock (ADDR_INET (inet_addr_of_string "0.0.0.0", port)) in
+    listen sock 5;
+    handle sock f
+end
+
+let () = Net.start Core.handle_input
+
+(* let () =
   while true do
     print_endline
     @@
     try Core.get_input () with
     | Core.Exit_exception -> exit 1
     | t -> Printf.sprintf {|{"error":"%s"}|} @@ Printexc.to_string t
-  done
+  done *)
