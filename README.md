@@ -1,5 +1,5 @@
 # mamml
-A caching database with first class JSON support, static typing, and (soon to have) a network interface.
+A caching database with first class JSON support, static typing, and a network interface.
 
 ## Usage
 
@@ -9,7 +9,14 @@ git clone https://github.com/rawleyfowler/mamml.git
 cd mamml
 eval $(opam env) # optional
 make install
-mamml
+mamml # starts the mamml server on port 5555
+```
+
+### Testing Connection
+```
+telnet localhost 5555 # Substitute localhost for your server's IP
+PUT `Hello World` AS TEXT NAMED test; -> test
+GET test; -> Hello World
 ```
 
 ### Development
