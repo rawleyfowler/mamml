@@ -13,7 +13,7 @@ mamml # starts the mamml server on port 5555
 ```
 
 ### Testing Connection
-```shell
+```
 telnet localhost 5555 # Substitute localhost for your server's IP
 PUT `Hello World` AS TEXT NAMED test; -> test
 GET test; -> Hello World
