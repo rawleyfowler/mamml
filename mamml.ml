@@ -42,11 +42,6 @@
     PUT Null AS Number; -> Id of new Null, number node.
 
     DELETE myAge; -> Deletes a given node by name.
-
-    * * * * * WARNING * * * * *
-    ...........................
-    .......... W I P ..........
-    ...........................
 *)
 
 module Data = struct
@@ -427,10 +422,22 @@ module Net = struct
     | Core.Exit_exception -> shutdown s SHUTDOWN_ALL
     | e -> Printf.fprintf cout {eos|{"error": "%s"}\r\n%!|eos} (Printexc.to_string e)
 
-  let start ?(port = 5555) f =
+  (** Starts the mamml server, [log] is optional and if set to
+      true will log connections to stdout, [port] is defaulted
+      to 5555, but can be specified. [f] is the function that will
+      be called to handle input lines : (string -> string). *)
+  let start ?(log=false) ?(port : int = 5555) ~f () =
+    let s_out = stdout |> out_channel_of_descr in
     Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
     let rec listen_loop so f =
-      let (s, _) = accept ?cloexec:(Some false) so in
+      let (s, addr) = accept ?cloexec:(Some false) so in
+      let () =
+        if log then begin
+          match addr with
+          | ADDR_INET (s, _) -> s |> string_of_inet_addr |> Printf.fprintf s_out "%s connected"
+          | ADDR_UNIX s -> Printf.fprintf s_out "%s connected" s
+        end
+      in
       let _ =
         Thread.create handle_conn (s, f)
       in listen_loop so f
@@ -442,4 +449,4 @@ module Net = struct
     listen_loop sock f
 end
 
-let () = Net.start Core.handle_input
+let () = Net.start ~log:true ~f:Core.handle_input ()

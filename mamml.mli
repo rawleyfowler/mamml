@@ -59,3 +59,7 @@ module Core :
     val delete : Data.node -> string
     val update : Data.node -> string
   end
+module Net :
+  sig
+    val start : ?log:bool -> ?port:int -> f:(string -> string) -> unit -> unit
+  end
